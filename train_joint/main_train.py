@@ -1,97 +1,153 @@
 import numpy as np
+import pytorch
 import torch
 import torchvision
+import torchvision.transforms as transforms
+from dataset import ArgoverseDataset
+import squeezesegMOD
 
-import torch.nn as nn
+### Load settings
+	# Dataset path 
+parser = argparse.ArgumentParser("./main_train.py")
+parser.add_argument(
+  '--dataset', '-d',
+  type=str,
+  required=True,
+  default= 'data/',
+  help='Dataset to train with',
+)
+parser.add_argument(
+  '--arch_cfg', '-ac',
+  type=str,
+  required=True,
+  default='config/arch/squeezesegV2.yaml',
+  help='Architecture yaml cfg file. See /config/arch for sample. No default!',
+)
+parser.add_argument(
+  '--data_cfg', '-dc',
+  type=str,
+  required=False,
+  default='config/labels/argoverse.yaml',
+  help='Classification yaml cfg file. See /config/labels for sample. No default!',
+)
+parser.add_argument(
+  '--log', '-l',
+  type=str,
+  default='logs/'+ datetime.datetime.now().strftime("%Y-%-m-%d-%H:%M") + '/',
+  help='Directory to put the log data. Default: ~/logs/date+time'
+)
+parser.add_argument(
+  '--pretrained', '-p',
+  type=str,
+  required=False,
+  default=None,
+  help='Directory to get the pretrained model. If not passed, do from scratch!'
+)
+FLAGS, unparsed = parser.parse_known_args()
 
-# Load settings
 
 
-# Load the data
+# print("Opening data config file %s" % FLAGS.data_cfg)
+# DATA = yaml.safe_load(open(FLAGS.data_cfg, 'r'))
+
+	# Model parameters
+	# Hyper parameters 
+loss = "xentropy"       # must be either xentropy or iou
+max_epochs = 150
+lr = 0.001              # sgd learning rate
+wup_epochs = 0.01       # warmup during first XX epochs (can be float)
+momentum = 0.9          # sgd momentum
+lr_decay = 0.99         # learning rate decay per epoch after initial cycle (from min lr)
+w_decay = 0.0001        # weight decay
+batch_size = 8          # batch size
+report_batch = 1        # every x batches, report loss
+report_epoch = 1        # every x epochs, report validation set
+epsilon_w = 0.001       # class weight w = 1 / (content + epsilon_w)
+workers = 12            # number of threads to get data
+dropout = 0.01
+OS = 16 # output stride (only horizontally)
+bn_d = 0.01
+train = True # train backbone?
+extra = False
+
+
+### Load the data
 	# Load the images
 	# Load pointcloud
+train_dataset = JointDataset("data")
+print("Data Done")
+
+trainloader = torch.utils.data.DataLoader(train_dataset,
+                                               batch_size=batch_size,
+                                               shuffle=True,
+                                               num_workers=workers,
+                                               pin_memory=True,
+                                               drop_last=True)
+assert len(trainloader) > 0
+	# Load labels
+for batch_num, (data_image, data_pcl) in enumerate(trainloader):
+	print(data_image)
+
+# ### Load the model 
+# 	# Load encoder only
+# model = Backbone(FLAGS.arch_cfg["backbone"])
 
 
-# Load the model
+# ### Training function 
+# # empty the cache to train now
+# torch.cuda.empty_cache()
+# device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+# current_time = str(datetime.datetime.now().timestamp())
+# train_log_dir = 'logs/log_' + current_time
+# train_summary_writer = tf.summary.create_file_writer(train_log_dir)
+# numEpochs = 10
 
-# Loading the ResNet18[input -> ]
 
-class ResNet18_loss:
+# # switch to train mode
+# model.train()
+# # model.load_state_dict(torch.load("saved/iter_600_ep_0.pth"))
+# model.to(device)
 
-	def __init__(self, shape=(30, 30)):
+# # loss function has a input vector, use CosineEmbeddingLoss for 2d loss
+# loss_function = nn.CosineSimilarity() 
+# optimizer = torch.optim.SGD(network.parameters(),lr=0.3,weight_decay=weightDecay,momentum=0.9)
+
+
+# ### Training loop
+# for epoch in range(numEpochs):	
+# 	avg_loss = 0
+# 	iters = 0
+# 	for batch_num, (data_image, data_pcl) in enumerate(trainloader):
+
+# 		optimizer.zero_grad()
+
+# 		Input_image = data_image.to(device)
+# 		Input_pcl = data_pcl.to(device)
+# 		output_pcl = model(Input_pcl)
 		
-		_resnet = torch.vision.models.resnet18(
-			pretrained=True, progress=True
-		)
+# 		# Resnet block
+# 		output_image = nn.models.Resnet(Input_image)
 
-		for layer in _resnet.parameters():
-			layer.requires_grad = False
-
-		self._conv1 = nn.Sequential(
-			_resnet.conv1, _resnet.bn1, _resnet.relu, _resnet.maxpool,
-			_resnet.layer1, _resnet.layer2
-		)
-
-		self._conv2 = nn.Sequential(
-			_resnet.layer3,
-			nn.ConvTranspose2d(
-				256, 128,
-				kernel_size=3, strides=2,
-				padding=1, output_padding=1
-			)
-		)
-
-		self._conv3 = nn.Sequential(
-			_resnet.layer4,
-			nn.ConvTranspose2d(
-				512, 128,
-				kernel_size=7, strides=4,
-				padding=3, output_padding=3
-			)
-		)
-
-		self._interp = nn.UpsamplingBilinear2d(
-			size=shape
-		)
-
-		self._1x1conv = nn.Conv2d(
-			inchannels=384, out_channels=32, kernel_size=1
-			)
+# 		# similarity matrix
+# 		# Loss function
+# 		loss = 1-(loss_function(output_pcl, output_image))
+# 		avg_loss += loss.item()
 
 
-	def forward(self, tensor):
-		
-		channels = []
-
-		channels.append(self._conv1(tensor))
-		channels.append(self._conv2(channels[-1]))
-		channels.append(self._conv3(channels[-1]))
-
-		concat = torch.cat(channels, dim=1)
-
-		interp = self._interp(output)
-
-		map_rep = self._1x1conv(output)
-
-		return output
+# 		loss.backward()
+# 		optimizer.step()
 
 
+# 		if batch_num % 5 ==0:
+# 	        with train_summary_writer.as_default():
+# 	          tf.summary.scalar('Iter_avg_loss', avg_loss, step=(epoch+1)*(batch_num+1))
+# 	    if batch_num % 100 == 0:
+# 	        print('Epoch: {}\tBatch: {}\tAvg-Loss: {:.4f}'.format(epoch+1, batch_num+1, avg_loss)) 
+# 	    if batch_num % 100 ==0:
+# 	        torch.save(model.state_dict(), "saved/iter_{}_ep_{}.pth".format(batch_num, epoch))
+# 	        print(loss.item())
+# 	        print('='*20)
+                
 
-
-# Training function
-
-
-
-# Training loop
-
-
-	# Resnet block
-
-
-	# similarity matrix
-
-
-	# Loss function
-
-
-	#
+# 		torch.cuda.empty_cache()
+# 		iters += 1

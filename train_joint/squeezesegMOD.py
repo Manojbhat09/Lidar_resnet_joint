@@ -179,6 +179,7 @@ class Backbone(nn.Module):
     x, skips, os = self.run_layer(x, self.dropout, skips, os)
     x, skips, os = self.run_layer(x, self.fire6789, skips, os)
     x, skips, os = self.run_layer(x, self.dropout, skips, os)
+    print("Final x shape ", x.shape)
 
     return x, skips
 
