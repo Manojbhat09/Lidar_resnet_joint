@@ -4,7 +4,7 @@ import torch
 import torchvision
 import torchvision.transforms as transforms
 from dataset import JointDataset
-import squeezesegMOD
+from squeezesegMOD import Backbone
 
 # TODO use this loss incorporating the ResNet Loss here
 from ShallowResNet import ResNet18Loss as ResNetTensor
@@ -95,8 +95,8 @@ for batch_num, (data_image, data_pcl) in enumerate(trainloader):
 
 # ### Load the model 
 # 	# Load encoder only
-# TODO Where is the Backbone function here?
-# model = Backbone(FLAGS.arch_cfg["backbone"])
+# TODO Consider the inputs of the Backbone Module.
+model = Backbone(FLAGS.arch_cfg["backbone"])
 
 
 ### Training function 
