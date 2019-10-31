@@ -7,7 +7,13 @@ import multiprocessing as mp
 import torch
 import torchvision
 from torch.utils.data.dataset import Dataset
+
+import PyntCloud
+
 import glob
+
+_MAP_VERSION = 'v1.2'
+
 
 # class ArgoverseDataset(Dataset):
 
@@ -130,37 +136,64 @@ class JointDataset(Dataset):
         self.transform = transform
         self.num_workers = num_workers
 
-        self.scene_id = []
+        self.root = root
+        self.scene_id = [] 
         self.scene_map_paths = []
         self.label_files = []
         self.pc_files = []
-        self.root = root
+        self.index = {}
         
-        self.scenes = glob.glob(root+"/*")
-        for each in self.scenes:
-            self.scene_map_paths.append(glob.glob(each+"/map/*"))
-            self.label_files.append(glob.glob(each+"/label/*"))
-            self.pc_files.append(glob.glob(each+"/lidar/*"))
+        # Since there are limited number of map data: from 19 to some extent, We should have to limit the possible data to them.
+        # Thus: 
+        #   1. Load the possible data in the Map.
+        #   2. Extend their names.
+
+        self.scene_id = glob.glob(root + os.path.sep +"*")
+        for each in self.scene_id:
+            
+            for pnt in glob.glob(os.path.join(each, 'map', '*')):
+                ind = pnt.split(os.path.sep)[-1].split('.')[0]  # Following what done in the Argoverse-API. Quite messy.
+
+                self.scene_map_paths.append(os.path.join(each, 'map', _MAP_VERSION, ind + '.png'))
+                self.label_files.append(os.path.join(each, 'labels', ind + '.label'))
+                self.pc_files.append(os.path.join(each, 'lidar', ind + '.ply'))
+
+            assert(len(self.label_files) == len(self.scene_map_paths))
         
-        # Extract Data:
-#         self.get_data(data_dir)
 
     def __getitem__(self, idx):
 
         # Extract scene map image.
-        print(np.array(self.scene_map_paths).shape)
-        print(np.array(self.scene_map_paths)[0])
-        print(self.scene_map_paths[idx])
+        # print(np.array(self.scene_map_paths).shape)
+        # print(np.array(self.scene_map_paths)[0])
+        # print(self.scene_map_paths[idx])
+
+        # Data Loading
         map_image = Image.open(self.scene_map_paths[idx])
         label_ = np.fromfile(self.label_files[idx], dtype=np.int32).reshape((-1))
         pointcloud_ply = PyntCloud.from_file(self.pc_files[idx])
+
         pointcloud_ = points.xyz
+        
         assert len(label_) == len(pointcloud_)
         
         if self.transform:
             map_image = self.transform(map_image)
+
         map_tensor = torchvision.transforms.ToTensor()(map_image)
+
         return map_tensor, pointcloud_, label_
 
     def __len__(self):
         return len(self.scene_id)
+
+
+if __name__ == "__main__":
+    print(os.path.abspath('.'))
+
+    temp_class = JointDataset(os.path.join('.', 'train_joint', 'data'))
+
+    temp_val = temp_class[0]
+
+    print(temp_val)
+

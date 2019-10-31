@@ -102,7 +102,7 @@ for batch_num, (data_image, data_pcl) in enumerate(trainloader):
 ### Training function 
 # empty the cache to train now
 torch.cuda.empty_cache()
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu') # TODO Specify the GPU number, if possible. We aren't using the our own private server.
+device = torch.device('cuda:3' if torch.cuda.is_available() else 'cpu') # TODO Specify the GPU number, if possible. We aren't using the our own private server.
 current_time = str(datetime.datetime.now().timestamp())
 train_log_dir = 'logs/log_' + current_time
 train_summary_writer = tf.summary.create_file_writer(train_log_dir)
@@ -126,7 +126,7 @@ optimizer = torch.optim.SGD(network.parameters(),lr=0.3,weight_decay=weightDecay
 for epoch in range(numEpochs):	
 	avg_loss = 0
 	iters = 0
-	for batch_num, (data_image, data_pcl) in enumerate(trainloader):
+	for batch_num, (data_image, data_pcl) in enumerate(trainloader):  # TODO Setup to feed the Labels from train_loader
 
 		optimizer.zero_grad()
 
