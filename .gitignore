@@ -1,3 +1,4 @@
 git_backup/
 lidar-bonnetal/
 *.pdf
+train_joint/data/*

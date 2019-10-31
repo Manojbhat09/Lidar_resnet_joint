@@ -3,8 +3,11 @@ import pytorch
 import torch
 import torchvision
 import torchvision.transforms as transforms
-from dataset import ArgoverseDataset
+from dataset import JointDataset
 import squeezesegMOD
+
+# TODO use this loss incorporating the ResNet Loss here
+from ShallowResNet import ResNet18Loss as ResNetTensor
 
 ### Load settings
 	# Dataset path 
@@ -74,6 +77,8 @@ extra = False
 ### Load the data
 	# Load the images
 	# Load pointcloud
+
+# TODO What is this JoinDataset Class? it should be more specified.
 train_dataset = JointDataset("data")
 print("Data Done")
 
@@ -90,64 +95,66 @@ for batch_num, (data_image, data_pcl) in enumerate(trainloader):
 
 # ### Load the model 
 # 	# Load encoder only
+# TODO Where is the Backbone function here?
 # model = Backbone(FLAGS.arch_cfg["backbone"])
 
 
-# ### Training function 
-# # empty the cache to train now
-# torch.cuda.empty_cache()
-# device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-# current_time = str(datetime.datetime.now().timestamp())
-# train_log_dir = 'logs/log_' + current_time
-# train_summary_writer = tf.summary.create_file_writer(train_log_dir)
-# numEpochs = 10
+### Training function 
+# empty the cache to train now
+torch.cuda.empty_cache()
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu') # TODO Specify the GPU number, if possible. We aren't using the our own private server.
+current_time = str(datetime.datetime.now().timestamp())
+train_log_dir = 'logs/log_' + current_time
+train_summary_writer = tf.summary.create_file_writer(train_log_dir)
+numEpochs = 10
+
+# ResNet for the Map-to-Feature map
+map_transform = ResNetTensor()
+map_transform.to(device)
+
+# switch to train mode
+model.train()
+# model.load_state_dict(torch.load("saved/iter_600_ep_0.pth"))
+model.to(device)
+
+# loss function has a input vector, use CosineEmbeddingLoss for 2d loss
+loss_function = nn.CosineSimilarity() 
+optimizer = torch.optim.SGD(network.parameters(),lr=0.3,weight_decay=weightDecay,momentum=0.9)
 
 
-# # switch to train mode
-# model.train()
-# # model.load_state_dict(torch.load("saved/iter_600_ep_0.pth"))
-# model.to(device)
+### Training loop
+for epoch in range(numEpochs):	
+	avg_loss = 0
+	iters = 0
+	for batch_num, (data_image, data_pcl) in enumerate(trainloader):
 
-# # loss function has a input vector, use CosineEmbeddingLoss for 2d loss
-# loss_function = nn.CosineSimilarity() 
-# optimizer = torch.optim.SGD(network.parameters(),lr=0.3,weight_decay=weightDecay,momentum=0.9)
+		optimizer.zero_grad()
 
-
-# ### Training loop
-# for epoch in range(numEpochs):	
-# 	avg_loss = 0
-# 	iters = 0
-# 	for batch_num, (data_image, data_pcl) in enumerate(trainloader):
-
-# 		optimizer.zero_grad()
-
-# 		Input_image = data_image.to(device)
-# 		Input_pcl = data_pcl.to(device)
-# 		output_pcl = model(Input_pcl)
+		Input_image = data_image.to(device)
+		Input_pcl = data_pcl.to(device)
+		output_pcl = model(Input_pcl)
 		
-# 		# Resnet block
-# 		output_image = nn.models.Resnet(Input_image)
+		# Resnet block
+		output_image = map_transform(Input_image)
 
-# 		# similarity matrix
-# 		# Loss function
-# 		loss = 1-(loss_function(output_pcl, output_image))
-# 		avg_loss += loss.item()
+		# similarity matrix
+		# Loss function
+		loss = 1-(loss_function(output_pcl, output_image))
+		avg_loss += loss.item()
 
+		loss.backward()
+		optimizer.step()
 
-# 		loss.backward()
-# 		optimizer.step()
-
-
-# 		if batch_num % 5 ==0:
-# 	        with train_summary_writer.as_default():
-# 	          tf.summary.scalar('Iter_avg_loss', avg_loss, step=(epoch+1)*(batch_num+1))
-# 	    if batch_num % 100 == 0:
-# 	        print('Epoch: {}\tBatch: {}\tAvg-Loss: {:.4f}'.format(epoch+1, batch_num+1, avg_loss)) 
-# 	    if batch_num % 100 ==0:
-# 	        torch.save(model.state_dict(), "saved/iter_{}_ep_{}.pth".format(batch_num, epoch))
-# 	        print(loss.item())
-# 	        print('='*20)
+		if batch_num % 5 ==0:
+	        with train_summary_writer.as_default():
+	          tf.summary.scalar('Iter_avg_loss', avg_loss, step=(epoch+1)*(batch_num+1))
+	    if batch_num % 100 == 0:
+	        print('Epoch: {}\tBatch: {}\tAvg-Loss: {:.4f}'.format(epoch+1, batch_num+1, avg_loss)) 
+	    if batch_num % 100 ==0:
+	        torch.save(model.state_dict(), "saved/iter_{}_ep_{}.pth".format(batch_num, epoch))
+	        print(loss.item())
+	        print('='*20)
                 
 
-# 		torch.cuda.empty_cache()
-# 		iters += 1
+		torch.cuda.empty_cache()
+		iters += 1
