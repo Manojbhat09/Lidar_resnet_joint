@@ -173,7 +173,7 @@ class JointDataset(Dataset):
         label_ = np.fromfile(self.label_files[idx], dtype=np.int32).reshape((-1))
         pointcloud_ply = PyntCloud.from_file(self.pc_files[idx])
 
-        pointcloud_ = points.xyz
+        pointcloud_ = pointcloud_ply.xyz
         
         assert len(label_) == len(pointcloud_)
         
