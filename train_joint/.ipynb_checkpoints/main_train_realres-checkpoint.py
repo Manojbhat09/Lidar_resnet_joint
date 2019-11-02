@@ -13,7 +13,7 @@ import tensorflow as tf
 from dataset import JointDataset
 # from squeezesegMOD import Backbone
 from model import Encoder, Decoder
-
+from realShallowResNet import ResnetShallow
 # TODO use this loss incorporating the ResNet Loss here
 from ShallowResNet import ResNet18Loss as ResNetTensor
 
@@ -248,14 +248,14 @@ if __name__ == "__main__":
     torch.cuda.empty_cache()
     device = torch.device('cuda:3' if torch.cuda.is_available() else 'cpu') # TODO Specify the GPU number, if possible. We aren't using the our own private server.
     current_time = str(datetime.datetime.now().timestamp())
-    train_log_dir = 'logs/log_with_only_dec_drop_wshuffle_full_real_' + current_time
+    train_log_dir = 'logs/log_with_only_dec_drop_wshuffle_full_' + current_time
     train_summary_writer = tf.summary.create_file_writer(train_log_dir)
     numEpochs = 500
     
     # Comment this out if using gpu
     device = torch.device('cpu')
     # ResNet for the Map-to-Feature map
-    map_transform = ResNetTensor()
+    map_transform = ResnetShallow()
     map_transform.to(device)
     # TODO Consider to freeze the parameters or not.
 
@@ -315,8 +315,8 @@ if __name__ == "__main__":
             if batch_num % 1 == 0:
             	print('Epoch: {}\tBatch: {}\tAvg-Loss: {:.4f}'.format(epoch+1, batch_num+1, avg_loss)) 
             if batch_num % 100 ==0:
-                torch.save(encoder_model.state_dict(), "saved_ckpt/encoder_full_real_iter_{}_ep_{}.pth".format(batch_num, epoch))
-                torch.save(decoder_model.state_dict(), "saved_ckpt/decoder_full_real_iter_{}_ep_{}.pth".format(batch_num, epoch))
+                torch.save(encoder_model.state_dict(), "saved_ckpt/encoder_full_iter_{}_ep_{}.pth".format(batch_num, epoch))
+                torch.save(decoder_model.state_dict(), "saved_ckpt/decoder_full_iter_{}_ep_{}.pth".format(batch_num, epoch))
                 print(loss.item())
                 print('='*20)
             

@@ -26,9 +26,11 @@ train:
 backbone:
   name: "squeezesegV2"  # ['squeezeseg', 'squeezesegV2', 'darknet']
   input_depth:
-    range: False
+    range: True
     xyz: True
-    remission: False
+    remission: True
+    extra_dim: False
+    extra_dim_num: 0
   dropout: 0.01
   OS: 16 # output stride (only horizontally)
   bn_d: 0.01

@@ -112,7 +112,7 @@ class Backbone(nn.Module):
             break
       print("New OS: ", int(current_os))
       print("Strides: ", self.strides)
-
+    self.input_depth = 3
     # encoder
     self.conv1a = nn.Sequential(nn.Conv2d(self.input_depth, 64, kernel_size=3,
                                           stride=[1, self.strides[0]],
@@ -143,6 +143,37 @@ class Backbone(nn.Module):
                                   Fire(384, 64, 256, 256, bn_d=self.bn_d),
                                   Fire(512, 64, 256, 256, bn_d=self.bn_d))
 
+    self._conv1 = nn.Sequential(
+			nn.Conv2d(
+				in_channels=512, out_channels=256, kernel_size=2, stride=2
+			)
+		)
+    self._conv2 = nn.Sequential(
+			nn.Conv2d(
+				in_channels=256, out_channels=128, kernel_size=2, stride=2
+			)
+		)
+    self._conv3 = nn.Sequential(
+			nn.Conv2d(
+				in_channels=128, out_channels=96, kernel_size=2, stride=2
+			)
+		)
+    self._conv4 = nn.Sequential(
+			nn.Conv2d(
+				in_channels=96, out_channels=64, kernel_size=10, stride=1, padding=2
+			)
+		)
+    self._conv5 = nn.Sequential(
+			nn.Conv2d(
+				in_channels=64, out_channels=32, kernel_size=2, stride=2
+			)
+		)
+    self._conv6 = nn.Sequential(
+			nn.Conv2d(
+				in_channels=32, out_channels=32, kernel_size=2, stride=2
+			)
+		)
+
     # output
     self.dropout = nn.Dropout2d(self.drop_prob)
 
@@ -159,17 +190,16 @@ class Backbone(nn.Module):
 
   def forward(self, x):
     # filter input
-    print("before filtering ", x.shape)
-    print(x)
+#     print("before filtering ", x.shape)
     x = x[:, self.input_idxs]
 
     # run cnn
     # store for skip connections
     skips = {}
     os = 1
-    print("/"*20, "starting encoder")
-    print(x.shape)
-    print(x)
+#     print("/"*20, "starting encoder")
+#     print(x.shape)
+    x = x.float()
     # encoder
     skip_in = self.conv1b(x)
     x = self.conv1a(x)
@@ -183,9 +213,18 @@ class Backbone(nn.Module):
     x, skips, os = self.run_layer(x, self.dropout, skips, os)
     x, skips, os = self.run_layer(x, self.fire6789, skips, os)
     x, skips, os = self.run_layer(x, self.dropout, skips, os)
-    print("Final x shape ", x.shape)
-
-    return x, skips
+#     print("Final x shape ", x.size())
+    print("Out pcl shape ", x.shape)
+    x = x.view(5, 512, 100,100)
+    print("Out pcl shape ", x.shape)
+    out = self._conv1(x) # 500, 256
+    out = self._conv2(out) # 250, 128
+    out = self._conv3(out) # 125, 96
+    out = self._conv4(out) # k=10, p=2, s=1 - 120, 64 
+    out = self._conv5(out) # 60, 32
+    out = self._conv6(out) # 30, 32
+    print("Out pcl shape ", out.shape)
+    return out, skips
 
   def get_last_depth(self):
     return self.last_channels

@@ -9,6 +9,8 @@ import torchvision
 from torch.utils.data.dataset import Dataset
 
 from pyntcloud import PyntCloud
+# from open3d import io
+from laserscan import LaserScan
 
 import glob
 
@@ -170,39 +172,59 @@ class JointDataset(Dataset):
         # print(self.scene_map_paths[idx])
 
         # Data Loading
-#         print(self.scene_map_paths)
-        print(idx)
-        map_image = Image.open(self.scene_map_paths[idx])
         label_ = np.fromfile(self.label_files[idx], dtype=np.int32).reshape((-1))
         pointcloud_ply = PyntCloud.from_file(self.pc_files[idx])
-
         pointcloud_ = pointcloud_ply.xyz
-
+#         pointcloud_ply = io.read_pointcloud(self.pc_files[idx])
+#         pointcloud_ = pointcloud_ply.points
         assert len(label_) == len(pointcloud_)
         full_data = np.concatenate((pointcloud_,label_[:,np.newaxis]), axis=1)
-        print(pointcloud_.shape)
-        print(full_data.shape)
+#         print("full data shape ",full_data.shape)
+        scanner = LaserScan(project=True)
+        scanner.create_scan(full_data)
         
+        main_tensor = np.empty((150000,4))
+        main_tensor[:full_data.shape[0], :full_data.shape[1]] = full_data
+        
+        # prepare input with channel in dim=2
+        complete_data = scanner.proj_xyz
+        complete_data_torch = torch.from_numpy(complete_data)
+        complete_data_torch = torch.transpose(complete_data_torch, 0, 2)
+        complete_data_torch = torch.transpose(complete_data_torch, 1, 2)
+#         print("xyz shape ",complete_data_torch.size())
+
+        range_data = scanner.proj_range
+        range_data_torch = torch.from_numpy(range_data)
+        range_data_torch = torch.transpose(range_data_torch.unsqueeze(2), 0, 2)
+        range_data_torch = torch.transpose(range_data_torch, 1, 2)
+#         print("range shape ",range_data_torch.size())
+
+        remission_data = scanner.proj_remission
+        remission_data_torch = torch.from_numpy(remission_data)
+        remission_data_torch = torch.transpose(remission_data_torch.unsqueeze(2), 0, 2)
+        remission_data_torch = torch.transpose(remission_data_torch, 1, 2)
+#         print("remission shape ",remission_data_torch.size())
+
+        concat_data = torch.cat((range_data_torch, complete_data_torch, remission_data_torch), dim=0)
+#         print("concat dim ", concat_data.size())
+        
+        map_image = Image.open(self.scene_map_paths[idx])
         if self.transform:
             map_image = self.transform(map_image)
 
         map_tensor = torchvision.transforms.ToTensor()(map_image)
-        pcl_tensor = torchvision.transforms.ToTensor()(full_data[ :2000, :])
-        print(map_tensor.shape)
-        print(pcl_tensor.shape)
-#         unproj_xyz = torch.full((, 3), -1.0, dtype=torch.float)
-#         unproj_xyz[:unproj_n_points] = torch.from_numpy(scan.points)
-
-        return map_tensor, pcl_tensor
+        
+        return map_tensor, concat_data
+    
     def __len__(self):
-        return len(self.scene_id)
+        return len(self.scene_map_paths)
 
 
 if __name__ == "__main__":
     print(os.path.abspath('.'))
 
     # temp_class = JointDataset(os.path.join('.', 'train_joint', 'data'))
-    temp_class = JointDataset(os.path.join('data'))
+    temp_class = JointDataset(os.path.join("/mnt/sdb1/shpark/dataset/argoverse/argoverse11/argoverse-forecasting-from-tracking/train/train1/"))
     temp_val = temp_class[0]
 
     print(temp_val)

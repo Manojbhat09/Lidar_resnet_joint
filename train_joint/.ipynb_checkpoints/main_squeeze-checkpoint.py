@@ -13,7 +13,7 @@ import tensorflow as tf
 from dataset import JointDataset
 # from squeezesegMOD import Backbone
 from model import Encoder, Decoder
-
+from realShallowResNet import ResnetShallow
 # TODO use this loss incorporating the ResNet Loss here
 from ShallowResNet import ResNet18Loss as ResNetTensor
 
@@ -57,138 +57,6 @@ def init_weights(m):
     if type(m) == nn.Linear:
         torch.nn.init.xavier_uniform(m.weight)
         m.bias.data.fill_(0.01)
-
-def get_batches(data_pcl):
-    print(data_pcl.shape)
-    xyz =data_pcl[:,0:3]
-    xyz_min = np.amin(xyz, axis=0, keepdims=True)
-    xyz_max = np.amax(xyz, axis=0, keepdims=True)
-    block_size = (2 * (xyz_max[0, 0] - xyz_min[0, 0]), 2 * (xyz_max[0, 1] - xyz_min[0, 1]) ,  2 * (xyz_max[0, -1] - xyz_min[0, -1]))
-    
-    xyz_blocks = np.floor((xyz - xyz_min) / block_size).astype(np.int)
-
-    #print('{}-Collecting points belong to each block...'.format(datetime.now(), xyzrcof.shape[0]))
-    blocks, point_block_indices, block_point_counts = np.unique(xyz_blocks, return_inverse=True,
-                                                                return_counts=True, axis=0)
-    block_point_indices = np.split(np.argsort(point_block_indices), np.cumsum(block_point_counts[:-1]))
-    #print('{}-{} is split into {} blocks.'.format(datetime.now(), dataset, blocks.shape[0]))
-
-    block_to_block_idx_map = dict()
-    for block_idx in range(blocks.shape[0]):
-        block = (blocks[block_idx][0], blocks[block_idx][1])
-        block_to_block_idx_map[(block[0], block[1])] = block_idx
-
-    # merge small blocks into one of their big neighbors
-    block_point_count_threshold = max_point_num / 3
-    #print("block_point_count_threshold",block_point_count_threshold)
-    nbr_block_offsets = [(0, 1), (1, 0), (0, -1), (-1, 0), (-1, 1), (1, 1), (1, -1), (-1, -1)]
-    block_merge_count = 0
-    for block_idx in range(blocks.shape[0]):
-        if block_point_counts[block_idx] >= block_point_count_threshold:
-            #print(block_idx, block_point_counts[block_idx])
-
-            continue
-
-
-        block = (blocks[block_idx][0], blocks[block_idx][1])
-        for x, y in nbr_block_offsets:
-            nbr_block = (block[0] + x, block[1] + y)
-            if nbr_block not in block_to_block_idx_map:
-                continue
-
-            nbr_block_idx = block_to_block_idx_map[nbr_block]
-            if block_point_counts[nbr_block_idx] < block_point_count_threshold:
-                continue
-
-
-            #print(block_idx, nbr_block_idx, block_point_counts[nbr_block_idx])
-
-            block_point_indices[nbr_block_idx] = np.concatenate(
-                [block_point_indices[nbr_block_idx], block_point_indices[block_idx]], axis=-1)
-            block_point_indices[block_idx] = np.array([], dtype=np.int)
-            block_merge_count = block_merge_count + 1
-            break
-    #print('{}-{} of {} blocks are merged.'.format(datetime.now(), block_merge_count, blocks.shape[0]))
-
-    idx_last_non_empty_block = 0
-    for block_idx in reversed(range(blocks.shape[0])):
-        if block_point_indices[block_idx].shape[0] != 0:
-            idx_last_non_empty_block = block_idx
-            break
-
-    # uniformly sample each block
-    for block_idx in range(idx_last_non_empty_block + 1):
-        point_indices = block_point_indices[block_idx]
-        if point_indices.shape[0] == 0:
-            continue
-
-        #print(block_idx, point_indices.shape)
-        block_points = xyz[point_indices]
-        block_min = np.amin(block_points, axis=0, keepdims=True)
-        xyz_grids = np.floor((block_points - block_min) / grid_size).astype(np.int)
-        grids, point_grid_indices, grid_point_counts = np.unique(xyz_grids, return_inverse=True,
-                                                                 return_counts=True, axis=0)
-        grid_point_indices = np.split(np.argsort(point_grid_indices), np.cumsum(grid_point_counts[:-1]))
-        grid_point_count_avg = int(np.average(grid_point_counts))
-        point_indices_repeated = []
-        for grid_idx in range(grids.shape[0]):
-            point_indices_in_block = grid_point_indices[grid_idx]
-            repeat_num = math.ceil(grid_point_count_avg / point_indices_in_block.shape[0])
-            if repeat_num > 1:
-                point_indices_in_block = np.repeat(point_indices_in_block, repeat_num)
-                np.random.shuffle(point_indices_in_block)
-                point_indices_in_block = point_indices_in_block[:grid_point_count_avg]
-            point_indices_repeated.extend(list(point_indices[point_indices_in_block]))
-        block_point_indices[block_idx] = np.array(point_indices_repeated)
-        block_point_counts[block_idx] = len(point_indices_repeated)
-
-    idx = 0
-    for block_idx in range(idx_last_non_empty_block + 1):
-        point_indices = block_point_indices[block_idx]
-        if point_indices.shape[0] == 0:
-            continue
-
-        block_point_num = point_indices.shape[0]
-        block_split_num = int(math.ceil(block_point_num * 1.0 / max_point_num))
-        point_num_avg = int(math.ceil(block_point_num * 1.0 / block_split_num))
-        point_nums = [point_num_avg] * block_split_num
-        point_nums[-1] = block_point_num - (point_num_avg * (block_split_num - 1))
-        starts = [0] + list(np.cumsum(point_nums))
-
-        np.random.shuffle(point_indices)
-        block_points = xyz[point_indices]
-
-
-        block_min = np.amin(block_points, axis=0, keepdims=True)
-        block_max = np.amax(block_points, axis=0, keepdims=True)
-        #block_center = (block_min + block_max) / 2
-        #block_center[0][-1] = block_min[0][-1]
-        #block_points = block_points - block_center  # align to block bottom center
-        x, y, z = np.split(block_points, (1, 2), axis=-1)
-
-        block_xzyrgbi = np.concatenate([x, z, y, i[point_indices]], axis=-1)
-
-        for block_split_idx in range(block_split_num):
-            start = starts[block_split_idx]
-            point_num = point_nums[block_split_idx]
-            #print(block_split_num, block_split_idx, point_num )
-
-
-
-            end = start + point_num
-            idx_in_batch = idx % batch_size
-            data[idx_in_batch, 0:point_num, ...] = block_xzyrgbi[start:end, :]
-            data_num[idx_in_batch] = point_num
-            indices_split_to_full[idx_in_batch, 0:point_num] = point_indices[start:end]
-
-            #print("indices_split_to_full", idx_in_batch, point_num, indices_split_to_full)
-
-            if  (block_idx == idx_last_non_empty_block and block_split_idx == block_split_num - 1): #Last iteration
-
-                item_num = idx_in_batch + 1
-                
-            idx = idx + 1
-    return data, data_num, indices_split_to_full, item_num, all_label_pred, indices_for_prediction
 
 
 # TODO defined for the main-limitation.
@@ -248,14 +116,14 @@ if __name__ == "__main__":
     torch.cuda.empty_cache()
     device = torch.device('cuda:3' if torch.cuda.is_available() else 'cpu') # TODO Specify the GPU number, if possible. We aren't using the our own private server.
     current_time = str(datetime.datetime.now().timestamp())
-    train_log_dir = 'logs/log_with_only_dec_drop_wshuffle_full_real_' + current_time
+    train_log_dir = 'logs/log_with_only_dec_drop_wshuffle_full_' + current_time
     train_summary_writer = tf.summary.create_file_writer(train_log_dir)
     numEpochs = 500
     
     # Comment this out if using gpu
     device = torch.device('cpu')
     # ResNet for the Map-to-Feature map
-    map_transform = ResNetTensor()
+    map_transform = ResnetShallow()
     map_transform.to(device)
     # TODO Consider to freeze the parameters or not.
 
@@ -315,8 +183,8 @@ if __name__ == "__main__":
             if batch_num % 1 == 0:
             	print('Epoch: {}\tBatch: {}\tAvg-Loss: {:.4f}'.format(epoch+1, batch_num+1, avg_loss)) 
             if batch_num % 100 ==0:
-                torch.save(encoder_model.state_dict(), "saved_ckpt/encoder_full_real_iter_{}_ep_{}.pth".format(batch_num, epoch))
-                torch.save(decoder_model.state_dict(), "saved_ckpt/decoder_full_real_iter_{}_ep_{}.pth".format(batch_num, epoch))
+                torch.save(encoder_model.state_dict(), "saved_ckpt/encoder_full_iter_{}_ep_{}.pth".format(batch_num, epoch))
+                torch.save(decoder_model.state_dict(), "saved_ckpt/decoder_full_iter_{}_ep_{}.pth".format(batch_num, epoch))
                 print(loss.item())
                 print('='*20)
             
